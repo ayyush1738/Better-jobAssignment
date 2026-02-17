@@ -7,6 +7,7 @@ class User(db.Model):
     """
     Core Identity Management.
     Stores hashed credentials and RBAC roles.
+    Fulfills: 'Security' and 'Role-Based Access Control'.
     """
     __tablename__ = 'users'
 
@@ -17,7 +18,7 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def set_password(self, password):
-        """Hashes the password using pbkdf2:sha256 for security."""
+        """Hashes the password using pbkdf2:sha256."""
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
@@ -39,12 +40,14 @@ class FeatureFlag(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    key = db.Column(db.String(50), unique=True, nullable=False)
+    key = db.Column(db.String(50), unique=True, nullable=False, index=True)
     description = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Relationship to statuses (One-to-Many)
+    # Relationships
     statuses = db.relationship('FlagStatus', backref='feature_flag', lazy=True, cascade="all, delete-orphan")
+    # Link to evaluations for Blast Radius calculations
+    evaluations = db.relationship('FlagEvaluation', backref='feature_flag', lazy=True, cascade="all, delete-orphan")
 
     def to_dict(self):
         return {
@@ -58,7 +61,7 @@ class FeatureFlag(db.Model):
 
 class Environment(db.Model):
     """
-    Logical deployment environments (Dev, Staging, Production).
+    Deployment environments (Dev, Staging, Production).
     """
     __tablename__ = 'environments'
     
@@ -70,7 +73,7 @@ class Environment(db.Model):
 
 class FlagStatus(db.Model):
     """
-    The 'Link' table storing the state of a flag per environment.
+    Stores the state (On/Off) of a flag per environment.
     """
     __tablename__ = 'flag_statuses'
     
@@ -93,30 +96,30 @@ class FlagStatus(db.Model):
 
 class FlagEvaluation(db.Model):
     """
-    Tracks 'Traffic'. Every time a flag is evaluated by a client, we log it.
-    Fulfills: 'Tracking Traffic' and 'Analytics'.
+    Telemetry Table. Tracks every time a feature is accessed.
+    This fix adds flag_id to solve the UndefinedColumn error in analytics.
     """
     __tablename__ = 'flag_evaluations'
     
     id = db.Column(db.Integer, primary_key=True)
-    flag_key = db.Column(db.String(50), nullable=False, index=True)
-    environment_name = db.Column(db.String(50))
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    # Critical Fix: This column MUST exist for the JOIN in FlagService.get_traffic_stats()
+    flag_id = db.Column(db.Integer, db.ForeignKey('feature_flags.id'), nullable=False)
+    environment_name = db.Column(db.String(50), default="Production")
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 class AuditLog(db.Model):
     """
-    A permanent ledger of all changes + AI decision metadata.
-    Fulfills: 'Observability'.
+    Observability Ledger. Stores all human actions and AI assessments.
     """
     __tablename__ = 'audit_logs'
     
     id = db.Column(db.Integer, primary_key=True)
     flag_id = db.Column(db.Integer, db.ForeignKey('feature_flags.id'))
     env_name = db.Column(db.String(50))
-    action = db.Column(db.String(100)) # e.g., 'TOGGLE_ON', 'AI_BLOCK'
+    action = db.Column(db.String(100)) # 'TOGGLE_ON', 'AI_BLOCK', 'AUDIT_REQUEST'
     reason = db.Column(db.Text)
-    ai_metadata = db.Column(JSONB, nullable=True) 
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    ai_metadata = db.Column(JSONB, nullable=True) # Stores the Groq JSON response
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
     def to_dict(self):
         return {

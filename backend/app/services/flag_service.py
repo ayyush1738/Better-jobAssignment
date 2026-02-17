@@ -1,9 +1,10 @@
 import logging
+from flask import g
+from datetime import datetime, timedelta
 from app.models import db, FeatureFlag, Environment, FlagStatus, AuditLog, FlagEvaluation
 from app.services.ai_agent import AIAgent
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +21,7 @@ class FlagService:
 
     @staticmethod
     def create_new_flag(data):
-        """
-        Initializes a new feature and sets it to 'Disabled' across all envs.
-        Fulfills: 'Safe-by-Default' architecture.
-        """
+        """Initializes a new feature as 'Disabled' across all envs."""
         try:
             new_flag = FeatureFlag(
                 name=data.name,
@@ -31,50 +29,83 @@ class FlagService:
                 description=data.description
             )
             db.session.add(new_flag)
-            
-            # Flush to get the ID without committing the whole transaction yet
-            db.session.flush() 
+            db.session.flush() # Secure the ID before creating statuses
 
-            # Auto-initialize status for Dev, Staging, and Production
             envs = Environment.query.all()
             for env in envs:
                 status = FlagStatus(feature_flag=new_flag, env=env, is_enabled=False)
                 db.session.add(status)
             
             db.session.commit()
-            logger.info(f"Flag created: {new_flag.key}")
             return new_flag
         except SQLAlchemyError as e:
             db.session.rollback()
             logger.error(f"Persistence error: {e}")
             raise
 
+    # --------------------------------------------------------------------------
+    # TWO-STAGE PRODUCTION GATE (WITH BLAST RADIUS TELEMETRY)
+    # --------------------------------------------------------------------------
+
+    @staticmethod
+    def _get_blast_radius(flag_id):
+        """Internal helper to count hits in the last 24 hours."""
+        one_day_ago = datetime.utcnow() - timedelta(hours=24)
+        return db.session.query(func.count(FlagEvaluation.id)).filter(
+            FlagEvaluation.flag_id == flag_id,
+            FlagEvaluation.timestamp >= one_day_ago
+        ).scalar() or 0
+
+    @staticmethod
+    def audit_flag(flag_id, environment_id, reason):
+        """Stage 1: AI Risk Assessment using Real-Time Traffic Data."""
+        flag = FeatureFlag.query.get(flag_id)
+        env = Environment.query.get(environment_id)
+
+        if not flag or not env:
+            return None, "Invalid Flag or Environment target."
+
+        # Fetch Live Telemetry (Real Traffic)
+        traffic_count = FlagService._get_blast_radius(flag_id)
+
+        # Call Groq AI Agent with Traffic Context
+        ai_report = AIAgent.get_risk_report(
+            feature_name=flag.name,
+            environment=env.name,
+            description=flag.description or "N/A",
+            traffic_count=traffic_count
+        )
+
+        # Metadata for frontend HUD
+        ai_report["live_traffic_hits"] = traffic_count
+
+        return ai_report, None
+
     @staticmethod
     def toggle_status(flag_id, data):
-        """
-        The Gatekeeper Logic. 
-        Consults the AI Agent before allowing a Production toggle.
-        """
+        """Stage 2: Finalize Deployment with AI-Enforced Guardrails & Manager Override."""
         flag = FeatureFlag.query.get(flag_id)
         env = Environment.query.get(data.environment_id)
         
         if not flag or not env:
             return None, "Invalid Flag or Environment target."
 
+        # 🛡️ Production Guardrail
         ai_report = None
-
-        # --- AI GUARDRAIL PHASE ---
         if env.name.lower() == "production":
-            logger.info(f"Risk Audit initiated for {flag.key}")
+            traffic_count = FlagService._get_blast_radius(flag_id)
             ai_report = AIAgent.get_risk_report(
                 feature_name=flag.name,
                 environment=env.name,
-                description=flag.description or "N/A"
+                description=flag.description or "N/A",
+                traffic_count=traffic_count
             )
             
-            # HARD BLOCK: If AI score is 8 or higher, we refuse the toggle
-            if ai_report.get('risk_score', 0) >= 8:
-                # Log the blocked attempt for the Audit Trail
+            # THE HARD BLOCK & OVERRIDE LOGIC
+            # If user is NOT a manager, the score block is absolute.
+            user_role = getattr(g, 'user_role', 'developer')
+            
+            if ai_report.get('risk_score', 0) >= 8 and user_role != 'manager':
                 blocked_log = AuditLog(
                     flag_id=flag_id,
                     env_name=env.name,
@@ -86,69 +117,60 @@ class FlagService:
                 db.session.commit()
                 return None, {"message": ai_report['advice'], "report": ai_report}
 
-        # --- UPDATE PHASE ---
+        # Update Phase
         try:
             status = FlagStatus.query.filter_by(flag_id=flag_id, env_id=data.environment_id).first()
-            if not status:
-                return None, "Environment configuration missing."
-
-            # Perform the toggle
+            old_state = "ON" if status.is_enabled else "OFF"
             status.is_enabled = not status.is_enabled
+            new_state = "ON" if status.is_enabled else "OFF"
             
-            # Record success in Audit Log
+            # Log successful deployment (or manager override)
+            log_action = f"TOGGLE_{new_state}"
+            if ai_report and ai_report.get('risk_score', 0) >= 8:
+                log_action = f"MANAGER_OVERRIDE_{new_state}"
+
             success_log = AuditLog(
                 flag_id=flag_id,
                 env_name=env.name,
-                action=f"TOGGLE_{'ON' if status.is_enabled else 'OFF'}",
+                action=log_action,
                 reason=data.reason,
-                ai_metadata=ai_report
+                ai_metadata=ai_report 
             )
             
             db.session.add(success_log)
             db.session.commit()
             return status, None
-
-        except SQLAlchemyError:
+        except SQLAlchemyError as e:
             db.session.rollback()
+            logger.error(f"Toggle transaction failed: {e}")
             return None, "Database transaction failed."
 
-    # --- TRAFFIC OBSERVATION LOGIC ---
+    # --- TRAFFIC HUD LOGIC ---
 
     @staticmethod
     def track_evaluation(key):
-        """
-        The 'Observer' logic. 
-        Logs an event every time a feature is 'hit' on the client side.
-        """
-        try:
-            flag = FeatureFlag.query.filter_by(key=key).first()
-            if not flag:
-                return False
-
-            # Create a traffic hit entry
-            hit = FlagEvaluation(flag_key=key, environment_name="Production")
-            db.session.add(hit)
-            db.session.commit()
-            return True
-        except Exception as e:
-            logger.error(f"Traffic tracking failed: {e}")
-            return False
+        """Captures a real traffic event from the SDK endpoint."""
+        flag = FeatureFlag.query.filter_by(key=key).first()
+        if not flag: return False
+        
+        # Log the hit linked to the Flag ID
+        hit = FlagEvaluation(flag_id=flag.id, environment_name="Production")
+        db.session.add(hit)
+        db.session.commit()
+        return True
 
     @staticmethod
     def get_traffic_stats():
-        """
-        Aggregates traffic 'hits' for the Dashboard analytics.
-        Fulfills: 'Traffic Monitoring' requirement.
-        """
-        # Groups evaluations by flag_key and counts them
+        """Aggregates hits per flag for the HUD Analytics."""
+        # Using specific join on flag_id to prevent schema errors
         stats = db.session.query(
-            FlagEvaluation.flag_key, 
+            FeatureFlag.key, 
             func.count(FlagEvaluation.id).label('hit_count')
-        ).group_by(FlagEvaluation.flag_key).all()
+        ).join(FlagEvaluation, FeatureFlag.id == FlagEvaluation.flag_id).group_by(FeatureFlag.key).all()
         
-        return [{"key": s.flag_key, "hits": s.hit_count} for s in stats]
+        return [{"key": s.key, "hits": s.hit_count} for s in stats]
 
     @staticmethod
     def get_audit_history():
-        """Returns the most recent system actions for the activity log."""
+        """Returns the activity stream for the Safety Ledger."""
         return AuditLog.query.order_by(AuditLog.timestamp.desc()).limit(30).all()

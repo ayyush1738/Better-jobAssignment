@@ -1,82 +1,89 @@
 import os
 import json
 import logging
-from google import genai
+from groq import Groq
 from typing import Dict, Any
 
-# Isolated logging for AI behavior
+# Isolated logging for system monitoring
 logger = logging.getLogger(__name__)
 
 class AIAgent:
     """
-    The AI Risk Auditor (Modern 2026 SDK). 
-    Responsible for interpreting feature intent and predicting system impact.
+    The AI Risk Auditor (Groq Powered). 
+    Uses Llama-3.3-70b-Versatile for near-instant, traffic-aware risk assessment.
+    Now includes mitigation awareness to prevent "Forever Blocks" on low-traffic features.
     """
 
     @staticmethod
     def _get_client():
-        """Initializes the modern GenAI Client using environment variables."""
-        api_key = os.getenv("GEMINI_API_KEY")
+        """Initializes the Groq Client."""
+        api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
-            logger.error("GEMINI_API_KEY is missing from environment variables.")
+            logger.error("CRITICAL: GROQ_API_KEY missing from environment.")
             return None
         
-        # In the 2026 SDK, everything revolves around the Client object
-        return genai.Client(api_key=api_key)
+        return Groq(api_key=api_key)
 
     @classmethod
-    def get_risk_report(cls, feature_name: str, environment: str, description: str) -> Dict[str, Any]:
+    def get_risk_report(cls, feature_name: str, environment: str, description: str, traffic_count: int = 0) -> Dict[str, Any]:
         """
-        Analyzes toggle risk. Returns structured JSON for the service layer.
+        Performs a high-speed risk audit of the feature toggle.
+        Calculates risk based on intent, blast radius, and safety mitigations.
         """
         client = cls._get_client()
         
-        # Fallback if AI configuration is broken
         if not client:
-            return cls._offline_fallback("AI Service unconfigured.")
+            return {
+                "risk_score": 5,
+                "advice": "System Warning: Groq Client not initialized. Check API Key.",
+                "risk_level": "medium"
+            }
 
         prompt = f"""
         System: Act as a Senior DevOps and Infrastructure Safety Engineer.
-        Task: Analyze risk level of toggling a feature flag.
-        
+        Task: Analyze the technical risk of toggling this feature flag.
+
         Context:
         - Feature: {feature_name}
         - Environment: {environment}
+        - Current Live Traffic (Hits in last 24h): {traffic_count}
         - Description: {description}
 
-        Constraints:
-        1. If description mentions 'database', 'migration', 'payment', or 'security', risk_score > 7.
-        2. If environment is not 'Production', risk_score < 4.
+        Internal Policy (Safety Weights):
+        1. SENSITIVITY: If 'payment', 'database', or 'auth' in Production, base risk is HIGH.
+        2. BLAST RADIUS: If Traffic > 1000, increase risk_score by +2.
+        3. MITIGATION: If description mentions 'circuit breaker', 'alpha testing', 'internal', or 'rollback plan', REDUCE risk_score by 3-4 points.
+        4. ZERO TRAFFIC RULE: If traffic is 0 and safety mitigations are mentioned, the risk_score should NOT exceed 7, allowing for safe rollout.
+
+        Constraint: Return ONLY a raw JSON object. No conversational filler.
         
-        Required JSON Format: {{ "risk_score": <int 1-10>, "advice": "<string>", "risk_level": "low|medium|high" }}
+        Structure:
+        {{
+          "risk_score": <int 1-10>,
+          "advice": "<detailed technical explanation focused on why the score was reduced or increased>",
+          "risk_level": "low" | "medium" | "high"
+        }}
         """
 
         try:
-            # Modern SDK uses client.models.generate_content
-            response = client.models.generate_content(
-                model='gemini-1.5-flash',
-                contents=prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "temperature": 0.1 
-                }
+            # Note: Changed model to the official Groq Llama 3.3 endpoint
+            chat_completion = client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="llama-3.3-70b-versatile",
+                temperature=0.1,
+                response_format={"type": "json_object"}
             )
             
-            # The .text attribute in the new SDK handles JSON cleaning automatically
-            report = json.loads(response.text)
-            logger.info(f"AI Risk Assessment: {feature_name} scored {report.get('risk_score')}")
+            response_text = chat_completion.choices[0].message.content
+            report = json.loads(response_text)
+            
+            logger.info(f"Groq Audit: {feature_name} (Traffic: {traffic_count}) -> Score: {report.get('risk_score')}")
             return report
 
         except Exception as e:
-            logger.error(f"AI Agent error: {e}")
-            return cls._offline_fallback("AI Auditor unreachable or malformed response.")
-
-    @staticmethod
-    def _offline_fallback(reason: str) -> Dict[str, Any]:
-        """The 'Fail-Safe' default to ensure the system never hangs."""
-        return {
-            "risk_score": 5, 
-            "advice": f"{reason} Manual review mandatory.", 
-            "risk_level": "medium",
-            "status": "fail-safe"
-        }
+            logger.error(f"Groq AI Request Failed: {str(e)}")
+            return {
+                "risk_score": 5, 
+                "advice": f"AI Auditor offline. Safety default applied. Error: {str(e)[:30]}", 
+                "risk_level": "medium"
+            }

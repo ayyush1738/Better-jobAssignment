@@ -1,7 +1,6 @@
 @import "tailwindcss";
 
-/* In v4, preflight and standard layers are handled by the single import above, 
-   but we can still define our custom theme variables here. */
+/* SafeConfig AI — Command Center Theme */
 
 :root {
   --background: #020617; /* slate-950 */
@@ -32,7 +31,75 @@ body {
   background: #334155; /* slate-700 */
 }
 
-/* Add a subtle glow to your AI Risk badges */
+/* AI Risk Badge Glow */
 .ai-glow {
   box-shadow: 0 0 15px rgba(59, 130, 246, 0.1);
 }
+
+/* Keyframe Animations */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+  }
+}
+
+@keyframes red-glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(239, 68, 68, 0.3);
+  }
+}
+
+@keyframes slide-in-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s ease-out forwards;
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.animate-red-glow {
+  animation: red-glow-pulse 2s ease-in-out infinite;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-from-right 0.4s ease-out forwards;
+}
+
+/* Spring easing for toggle switches */
+.ease-spring {
+  transition-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Stagger animations for grid items */
+.stagger-1 { animation-delay: 50ms; }
+.stagger-2 { animation-delay: 100ms; }
+.stagger-3 { animation-delay: 150ms; }
+.stagger-4 { animation-delay: 200ms; }

@@ -16,7 +16,7 @@ jwt = JWTManager()
 def create_app():
     """
     The App Factory: The central engine of your backend.
-    Fulfills: 'Security', 'Change Resilience', and 'Infrastructure'.
+    Fulfills: 'Security', 'Change Resilience', and 'Infrastructure' requirements.
     """
     app = Flask(__name__)
 
@@ -38,13 +38,20 @@ def create_app():
 
     # 4. Blueprint Registration (Deferred Imports)
     # We import inside the function to prevent circular dependency crashes
-    from app.routes.flag_routes import flags_bp
-    from app.routes.ai_routes import ai_bp
-    from app.routes.auth_routes import auth_bp
-    
-    # Registering blueprints with clean URL prefixes
-    app.register_blueprint(flags_bp) # /api/flags
-    app.register_blueprint(ai_bp)    # /api/ai
-    app.register_blueprint(auth_bp)  # /api/auth
+    # This ensures models are loaded before the routes try to use them
+    with app.app_context():
+        from app.routes.flag_routes import flags_bp
+        from app.routes.ai_routes import ai_bp
+        from app.routes.auth_routes import auth_bp
+        
+        # Registering blueprints with clean URL prefixes
+        app.register_blueprint(flags_bp) # /api/flags
+        app.register_blueprint(ai_bp)    # /api/ai
+        app.register_blueprint(auth_bp)  # /api/auth
+
+        # Optional: Add a root health check
+        @app.route('/')
+        def health_check():
+            return {"status": "online", "system": "SafeConfig AI Core"}, 200
 
     return app

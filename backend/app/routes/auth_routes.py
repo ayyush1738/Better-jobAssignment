@@ -16,7 +16,7 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 def register():
     """
     Onboards a new user with a hashed password.
-    Fulfills: 'Security' and 'Proper Auth'.
+    Fulfills: 'Security' and 'Proper Auth' requirements.
     """
     try:
         # Validate structure with Pydantic
@@ -29,7 +29,7 @@ def register():
 
         # Create new user
         new_user = User(email=data.email, role=data.role)
-        new_user.set_password(data.password) # Hashes the password via Werkzeug
+        new_user.set_password(data.password) # Hashes the password via Werkzeug in models.py
 
         db.session.add(new_user)
         db.session.commit()
@@ -50,7 +50,7 @@ def login():
     Fulfills: 'Security' and 'Role-Based Access Control (RBAC)'.
     """
     try:
-        # 1. Capture and Log for Debugging (Helps fix those 400 errors)
+        # 1. Capture and Log for Debugging
         json_data = request.get_json()
         logger.debug(f"Login Attempt Data: {json_data}")
 
@@ -66,7 +66,8 @@ def login():
             return api_response(False, "Unauthorized", format_error("Invalid email or password"), 401)
 
         # 5. Generate JWT with 'role' claim
-        # Using string ID for identity is standard practice
+        # Including the role in the JWT allows the backend to protect routes 
+        # without querying the database every time.
         access_token = create_access_token(
             identity=str(user.id), 
             additional_claims={"role": user.role}
@@ -74,6 +75,7 @@ def login():
 
         logger.info(f"Identity issued: User '{user.email}' authenticated as '{user.role}'.")
         
+        # Return everything the frontend AuthContext needs to persist the session
         return api_response(True, "Login successful", {
             "access_token": access_token,
             "role": user.role,

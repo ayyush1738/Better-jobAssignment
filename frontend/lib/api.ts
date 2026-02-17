@@ -1,22 +1,25 @@
 import axios from 'axios';
 
-// Create a centralized Axios instance
+/**
+ * CORE API GATEWAY
+ * Centralized configuration for the SafeConfig AI backend.
+ */
 const api = axios.create({
-  // Use the environment variable from .env.local, fallback to Flask default
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api',
+  // Fulfills environment-aware deployment (Dev/Prod)
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000/api',
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
 /**
- * REQUEST INTERCEPTOR
- * Before every request leaves the frontend, this function runs.
- * It injects the JWT token so the backend knows who is calling.
+ * REQUEST INTERCEPTOR: The "Identity Provider"
+ * Automatically injects the JWT into the Authorization header.
+ * Fulfills: 'Security' and 'Proper Auth' requirements.
  */
 api.interceptors.request.use(
   (config) => {
-    // Grab the token we saved in AuthContext/LocalStorage
+    // We use the specific key 'safeconfig_token' to match our Auth flow
     const token = typeof window !== 'undefined' ? localStorage.getItem('safeconfig_token') : null;
     
     if (token) {
@@ -30,27 +33,44 @@ api.interceptors.request.use(
 );
 
 /**
- * RESPONSE INTERCEPTOR
- * This handles common errors globally so you don't have to 
- * write "if (error.status === 403)" in every single component.
+ * RESPONSE INTERCEPTOR: The "Protocol Enforcer"
+ * Globally handles session expiry and AI Guardrail blocks.
  */
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status;
 
+    // 1. Session Expiry (401 Unauthorized)
     if (status === 401) {
-      // Unauthorized: Token might be expired
-      console.warn("Session expired. Logging out...");
+      console.warn("🛡️ SafeConfig: Session invalid or expired. Redirecting...");
       if (typeof window !== 'undefined') {
-        localStorage.clear();
-        window.location.href = '/';
+        localStorage.removeItem('safeconfig_token');
+        localStorage.removeItem('safeconfig_user');
+        // Prevent infinite loops by checking if we are already home
+        if (window.location.pathname !== '/') {
+          window.location.href = '/';
+        }
       }
     }
 
+    // 2. AI Guardrail or RBAC Block (403 Forbidden)
     if (status === 403) {
-      // Forbidden: Role mismatch or AI Guardrail block
-      // We pass the error back so the UI can show the AI's specific advice
+      // Pass the error to the UI so we can display specific AI advice
+      // e.g., "Blocked: High Risk Score 9/10 - Too many active users"
+      console.error("🚫 Action Blocked:", error.response?.data?.message);
+      return Promise.reject(error);
+    }
+
+    // 3. Validation Errors (400 Bad Request)
+    if (status === 400) {
+      console.error("⚠️ Validation Failed:", error.response?.data?.data || error.response?.data?.message);
+      return Promise.reject(error);
+    }
+
+    // 4. Server Errors (500)
+    if (status === 500) {
+      console.error("🔥 Backend Server Error. Check Flask logs.");
       return Promise.reject(error);
     }
 

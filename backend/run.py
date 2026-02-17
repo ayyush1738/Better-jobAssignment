@@ -30,11 +30,11 @@ def seed_database():
             if not User.query.first():
                 logger.info("Creating default test accounts...")
                 
-                # Manager Account
+                # Manager Account (Full permissions)
                 manager = User(email="manager@safeconfig.ai", role="manager")
                 manager.set_password("password123") # Standardized password for demo
                 
-                # Developer Account
+                # Developer Account (Restricted permissions)
                 developer = User(email="dev@safeconfig.ai", role="developer")
                 developer.set_password("password123")
                 
@@ -51,6 +51,7 @@ def seed_database():
 
 if __name__ == "__main__":
     # 1. Physical Layer: Create Postgres tables based on models.py
+    # Use this for initial setup; in production, use flask-migrate
     with app.app_context():
         db.create_all()
         logger.info("Schema synchronization complete.")
@@ -59,11 +60,11 @@ if __name__ == "__main__":
     seed_database()
 
     # 3. Network Layer: Start the server
-    # host='0.0.0.0' allows connectivity from Docker or other local network devices
+    # host='0.0.0.0' allows connectivity from Docker or local network devices
     logger.info("SafeConfig AI Backend live at http://127.0.0.1:5000")
     
     app.run(
         host="0.0.0.0", 
         port=5000, 
-        debug=True  # Enables hot-reloading for rapid 2026 development
+        debug=True  # Enables hot-reloading for development
     )
