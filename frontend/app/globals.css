@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+/* In v4, preflight and standard layers are handled by the single import above, 
+   but we can still define our custom theme variables here. */
+
+:root {
+  --background: #020617; /* slate-950 */
+  --foreground: #f8fafc; /* slate-50 */
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Custom Scrollbar for the Audit Log Side-panel */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #1e293b; /* slate-800 */
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #334155; /* slate-700 */
+}
+
+/* Add a subtle glow to your AI Risk badges */
+.ai-glow {
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.1);
+}
