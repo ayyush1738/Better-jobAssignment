@@ -1,3 +1,5 @@
 backend/venv
 backend/.env
 frontend/.next
+.env
+.env.*
