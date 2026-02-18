@@ -85,24 +85,37 @@ def toggle_flag(flag_id: int):
         logger.exception(f"Toggle failure for flag {flag_id}")
         return api_response(False, "System Error", format_error("Deployment failure"), 500)
 
-# --- PUBLIC TELEMETRY & SDK ---
+# --- PUBLIC TELEMETRY & SDK (ENVIRONMENT AWARE) ---
 
 @flags_bp.route("/evaluate/<string:key>", methods=["GET"])
 def track_traffic(key: str):
-    """SDK Simulation: Logs a hit and returns state. No Auth required for pings."""
+    """
+    SDK Simulation: Logs a hit and returns state.
+    Now Environment-Aware: Uses ?env= parameter from URL.
+    """
     from app.models import FeatureFlag, FlagStatus, Environment
     
-    # 1. Capture the 'hit' for AI Blast Radius
-    FlagService.track_evaluation(key)
+    # 1. Get environment from query params (defaults to Production)
+    # Normalized to Title Case (e.g., 'development' -> 'Development')
+    env_name = request.args.get('env', 'Production').capitalize()
     
-    # 2. Return the state for the Client App (Production Default)
+    # 2. Capture the 'hit' for AI Blast Radius analytics
+    # Pass env_name to ensure the hit is recorded in the correct environment bucket
+    FlagService.track_evaluation(key, env_name)
+    
+    # 3. Resolve Database Objects
     flag = FeatureFlag.query.filter_by(key=key).first()
-    if not flag: return api_response(False, "Flag Not Found", None, 404)
+    if not flag: 
+        return api_response(False, "Flag Not Found", None, 404)
     
-    prod = Environment.query.filter_by(name="Production").first()
-    status = FlagStatus.query.filter_by(flag_id=flag.id, env_id=prod.id).first()
+    target_env = Environment.query.filter_by(name=env_name).first()
+    if not target_env:
+        return api_response(False, f"Environment '{env_name}' Not Found", None, 404)
     
-    return api_response(True, "Traffic captured", {"enabled": status.is_enabled}, 200)
+    # 4. Return the state for the specific Environment
+    status = FlagStatus.query.filter_by(flag_id=flag.id, env_id=target_env.id).first()
+    
+    return api_response(True, f"Traffic captured for {env_name}", {"enabled": status.is_enabled}, 200)
 
 # --- CACHED ANALYTICS & LOGS ---
 

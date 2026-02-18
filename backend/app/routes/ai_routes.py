@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 from app import db
-# Corrected: Importing FeatureFlag to match models.py
 from app.models import FeatureFlag, FlagEvaluation
 from app.services.ai_agent import AIAgent
 from app.utils.helpers import api_response, format_error
@@ -18,7 +17,7 @@ ai_bp = Blueprint("ai", __name__, url_prefix="/api/ai")
 def analyze_deployment_risk():
     """
     Standalone endpoint for on-demand AI risk analysis.
-    Calculates BLAST RADIUS by checking traffic hits in the last 24 hours.
+    Calculates BLAST RADIUS by checking environment-specific traffic hits.
     """
     if not request.is_json:
         return api_response(
@@ -31,24 +30,26 @@ def analyze_deployment_risk():
     try:
         json_data = request.get_json()
         feature_key = json_data.get("feature_key")
-        environment = json_data.get("environment", "Production")
+        
+        # Normalize environment name to match Database (e.g., "development" -> "Development")
+        environment = json_data.get("environment", "Production").capitalize()
         description = json_data.get("description", "No description provided.")
 
-        # 1. FETCH TRAFFIC TELEMETRY (THE BLAST RADIUS)
-        # We look up the flag by its unique key using FeatureFlag
+        # 1. FETCH ENVIRONMENT-AWARE TRAFFIC TELEMETRY
         flag = FeatureFlag.query.filter_by(key=feature_key).first()
         traffic_count = 0
         
         if flag:
-            # Count evaluation hits in the last 24 hours
+            # Count evaluation hits in the last 24 hours for THIS specific environment
             one_day_ago = datetime.utcnow() - timedelta(hours=24)
             traffic_count = FlagEvaluation.query.filter(
                 FlagEvaluation.flag_id == flag.id,
+                FlagEvaluation.environment_name == environment,
                 FlagEvaluation.timestamp >= one_day_ago
             ).count()
 
         # 2. INVOKE THE GROQ-POWERED AUDITOR WITH TRAFFIC CONTEXT
-        # The AI now knows if 0 people or 10,000 people are using this feature.
+        # The AI now distinguishes between Dev traffic and Prod traffic.
         assessment = AIAgent.get_risk_report(
             feature_name=flag.name if flag else feature_key,
             environment=environment,
@@ -61,7 +62,7 @@ def analyze_deployment_risk():
 
         return api_response(
             success=True, 
-            message="Traffic-Aware AI Audit Complete", 
+            message=f"AI Audit Complete for {environment}", 
             data=assessment, 
             status_code=200
         )
@@ -69,7 +70,7 @@ def analyze_deployment_risk():
     except Exception as e:
         logger.exception(f"AI Service Failure: {e}")
         
-        # FAIL-SAFE: Graceful degradation if Groq or DB lookup fails
+        # FAIL-SAFE: Graceful degradation
         fail_safe_data = {
             "risk_score": 5, 
             "advice": "AI Auditor temporarily offline. Proceed with manual verification.",

@@ -48,11 +48,12 @@ class FlagService:
     # --------------------------------------------------------------------------
 
     @staticmethod
-    def _get_blast_radius(flag_id):
-        """Internal helper to count hits in the last 24 hours."""
+    def _get_blast_radius(flag_id, env_name="Production"):
+        """Internal helper to count hits in the last 24 hours for a specific env."""
         one_day_ago = datetime.utcnow() - timedelta(hours=24)
         return db.session.query(func.count(FlagEvaluation.id)).filter(
             FlagEvaluation.flag_id == flag_id,
+            FlagEvaluation.environment_name == env_name,
             FlagEvaluation.timestamp >= one_day_ago
         ).scalar() or 0
 
@@ -65,8 +66,8 @@ class FlagService:
         if not flag or not env:
             return None, "Invalid Flag or Environment target."
 
-        # Fetch Live Telemetry (Real Traffic)
-        traffic_count = FlagService._get_blast_radius(flag_id)
+        # Fetch Live Telemetry (Real Traffic) for the target environment
+        traffic_count = FlagService._get_blast_radius(flag_id, env.name)
 
         # Call Groq AI Agent with Traffic Context
         ai_report = AIAgent.get_risk_report(
@@ -93,7 +94,7 @@ class FlagService:
         # 🛡️ Production Guardrail
         ai_report = None
         if env.name.lower() == "production":
-            traffic_count = FlagService._get_blast_radius(flag_id)
+            traffic_count = FlagService._get_blast_radius(flag_id, env.name)
             ai_report = AIAgent.get_risk_report(
                 feature_name=flag.name,
                 environment=env.name,
@@ -102,7 +103,6 @@ class FlagService:
             )
             
             # THE HARD BLOCK & OVERRIDE LOGIC
-            # If user is NOT a manager, the score block is absolute.
             user_role = getattr(g, 'user_role', 'developer')
             
             if ai_report.get('risk_score', 0) >= 8 and user_role != 'manager':
@@ -120,7 +120,6 @@ class FlagService:
         # Update Phase
         try:
             status = FlagStatus.query.filter_by(flag_id=flag_id, env_id=data.environment_id).first()
-            old_state = "ON" if status.is_enabled else "OFF"
             status.is_enabled = not status.is_enabled
             new_state = "ON" if status.is_enabled else "OFF"
             
@@ -145,16 +144,16 @@ class FlagService:
             logger.error(f"Toggle transaction failed: {e}")
             return None, "Database transaction failed."
 
-    # --- TRAFFIC HUD LOGIC ---
+    # --- TRAFFIC HUD LOGIC (ENVIRONMENT AWARE) ---
 
     @staticmethod
-    def track_evaluation(key):
-        """Captures a real traffic event from the SDK endpoint."""
+    def track_evaluation(key, env_name="Production"):
+        """Captures a real traffic event linked to a specific environment."""
         flag = FeatureFlag.query.filter_by(key=key).first()
         if not flag: return False
         
-        # Log the hit linked to the Flag ID
-        hit = FlagEvaluation(flag_id=flag.id, environment_name="Production")
+        # Log the hit linked to the Flag ID and the specific Environment Name
+        hit = FlagEvaluation(flag_id=flag.id, environment_name=env_name)
         db.session.add(hit)
         db.session.commit()
         return True
@@ -162,7 +161,6 @@ class FlagService:
     @staticmethod
     def get_traffic_stats():
         """Aggregates hits per flag for the HUD Analytics."""
-        # Using specific join on flag_id to prevent schema errors
         stats = db.session.query(
             FeatureFlag.key, 
             func.count(FlagEvaluation.id).label('hit_count')

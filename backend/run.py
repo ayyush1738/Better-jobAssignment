@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
     # 3. Network Layer: Start the server
     # host='0.0.0.0' allows connectivity from Docker or local network devices
-    logger.info("SafeConfig AI Backend live at http://127.0.0.1:5000")
+    logger.info("SafeConfig AI Backend live")
     
     app.run(
         host="0.0.0.0", 
