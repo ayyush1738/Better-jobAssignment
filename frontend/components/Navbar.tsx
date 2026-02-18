@@ -27,9 +27,6 @@ export default function Navbar() {
       {/* 1. Brand Identity & Global Navigation */}
       <div className="flex items-center gap-10">
         <Link href="/dashboard" className="flex items-center gap-3 group">
-          <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform">
-            <Cpu className="w-5 h-5 text-white" />
-          </div>
           <span className="text-2xl font-black tracking-tighter text-white">
             SafeConfig <span className="text-blue-500">AI</span>
           </span>
@@ -70,12 +67,7 @@ export default function Navbar() {
       {/* 2. User Intelligence & Actions */}
       <div className="flex items-center gap-6">
         
-        {/* System Health Indicator */}
-        <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/50 border border-slate-800">
-          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" />
-          <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Groq LPU Stable</span>
-        </div>
-
+    
         {/* Role & Identity Badge */}
         {role && (
           <div className={`flex items-center gap-3 pl-2 pr-4 py-1.5 rounded-2xl border bg-[#020617] shadow-2xl transition-all ${

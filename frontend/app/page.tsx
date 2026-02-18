@@ -70,9 +70,6 @@ export const SafeConfig = {
 
       {/* SECTION 1: HERO */}
       <div className="text-center space-y-6">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-400 text-[10px] font-black uppercase tracking-[0.2em]">
-          <Cpu className="w-3 h-3" /> Neural Guardrail Protocol 2.6
-        </div>
         <h1 className="text-7xl font-black tracking-tighter sm:text-9xl text-white">
           SafeConfig <span className="text-blue-600">AI</span>
         </h1>

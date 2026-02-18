@@ -1,36 +1,26 @@
+# Groq third-party SDK for AI generation API
 import os
 import json
 import logging
 from groq import Groq
 from typing import Dict, Any
 
-# Isolated logging for system monitoring
 logger = logging.getLogger(__name__)
 
 class AIAgent:
-    """
-    The AI Risk Auditor (Groq Powered). 
-    Uses Llama-3.3-70b-Versatile for near-instant, traffic-aware risk assessment.
-    """
-
     @staticmethod
     def _get_client():
-        """Initializes the Groq Client with a production timeout."""
         api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
             logger.error("CRITICAL: GROQ_API_KEY missing from environment.")
             return None
         
-        # We set a 10s timeout to ensure our Flask app stays responsive 
-        # even if the AI provider experiences high latency.
+    
         return Groq(api_key=api_key, timeout=10.0)
 
     @classmethod
     def get_risk_report(cls, feature_name: str, environment: str, description: str, traffic_count: int = 0) -> Dict[str, Any]:
-        """
-        Performs a high-speed risk audit. 
-        Calculates risk based on intent, blast radius, and safety mitigations.
-        """
+   
         client = cls._get_client()
         
         if not client:
@@ -67,10 +57,9 @@ class AIAgent:
         """
 
         try:
-            # temperature=0.1 ensures the auditor is consistent and strictly logical.
             chat_completion = client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="llama-3.3-70b-versatile",
+                model="openai/gpt-oss-120b",
                 temperature=0.1,
                 response_format={"type": "json_object"}
             )

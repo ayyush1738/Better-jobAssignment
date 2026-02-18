@@ -38,7 +38,7 @@ export default function ArchitecturePage() {
                 setHealth({
                     status: 'Uplink Stable',
                     db: 'PostgreSQL 15 Active',
-                    ai: 'Groq Llama 3.3 LPU',
+                    ai: 'Open AI gpt-oss-120b',
                     latency: `${end - start}ms`
                 });
             } catch {
@@ -55,8 +55,6 @@ export default function ArchitecturePage() {
 
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-1000">
-            <Navbar />
-
             <div className="space-y-12 mt-6">
                 {/* Header Specification */}
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-800/60 pb-10">
@@ -148,37 +146,6 @@ export default function ArchitecturePage() {
                                 ))}
                             </tbody>
                         </table>
-                    </div>
-                </div>
-
-                {/* Component Architecture Diagram Tag */}
-                [Image of a microservices architecture diagram showing the relationship between a Next.js frontend, a Flask API gateway, a PostgreSQL database, and a Groq AI inference engine]
-
-                {/* Tech Stack Disclosure */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div className="lg:col-span-2 p-10 rounded-[2.5rem] bg-gradient-to-br from-blue-600/10 to-transparent border border-blue-500/20 shadow-2xl">
-                        <h3 className="text-xl font-black text-white mb-4 flex items-center gap-3">
-                            <ShieldCheck className="w-6 h-6 text-blue-500" />
-                            Security Protocol Disclosure
-                        </h3>
-                        <p className="text-slate-400 leading-relaxed font-medium">
-                            SafeConfig AI utilizes <strong>Role-Based Access Control (RBAC)</strong> enforced via JWT (JSON Web Tokens). 
-                            Every request is verified against the backend&apos;s cryptographic secret. The <strong>LPU Inference Engine</strong> 
-                            provides near-instant security audits, analyzing feature descriptions and environment context to block high-risk 
-                            operations in Production without manual intervention.
-                        </p>
-                    </div>
-                    <div className="p-10 rounded-[2.5rem] bg-slate-900/30 border border-slate-800 flex flex-col justify-center items-center text-center">
-                         <div className="w-12 h-12 bg-blue-600/20 rounded-2xl flex items-center justify-center mb-4">
-                            <Code className="w-6 h-6 text-blue-500" />
-                         </div>
-                         <h4 className="text-white font-black uppercase text-xs tracking-widest mb-2">Stack Summary</h4>
-                         <ul className="text-[10px] text-slate-500 font-black space-y-2 uppercase tracking-tighter">
-                            <li>Next.js 14 (App Router)</li>
-                            <li>Python 3.10 / Flask</li>
-                            <li>PostgreSQL w/ JSONB</li>
-                            <li>Groq / Llama 3.3 70B</li>
-                         </ul>
                     </div>
                 </div>
             </div>

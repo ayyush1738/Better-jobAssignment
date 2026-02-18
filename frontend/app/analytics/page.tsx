@@ -87,8 +87,6 @@ export default function AnalyticsPage() {
 
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-1000">
-            <Navbar />
-
             <div className="space-y-8 mt-6">
                 {/* Dashboard Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-slate-900/30 p-8 rounded-[2.5rem] border border-slate-800/60 shadow-2xl backdrop-blur-md">
