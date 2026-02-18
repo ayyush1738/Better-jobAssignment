@@ -49,7 +49,11 @@ def create_app():
     app.config['JWT_SECRET_KEY'] = jwt_key or 'dev-key-only'
 
     # --- 3. CORS & Extensions ---
-    allowed_origins = os.getenv('ALLOWED_ORIGINS', '*') 
+    allowed_origins = [
+        os.getenv('ALLOWED_ORIGINS', '*'),
+        "https://better-job-assignment-dfwp.vercel.app" 
+    ]
+
     CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
 
     db.init_app(app)
