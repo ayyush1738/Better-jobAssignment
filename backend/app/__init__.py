@@ -6,52 +6,56 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
 
-# 1. Initialize extensions as "singletons"
-# These are globally accessible so models and services can use them
 load_dotenv()
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
 
 def create_app():
-    """
-    The App Factory: The central engine of your backend.
-    Fulfills: 'Security', 'Change Resilience', and 'Infrastructure' requirements.
-    """
     app = Flask(__name__)
 
-    # 2. Configuration (Environment-Driven)
-    # Ensure your .env has DATABASE_URL=postgresql://user:password@localhost:5432/safeconfig
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
+    # --- 1. Robust Database URI Handling ---
+    db_url = os.getenv('DATABASE_URL')
+    if db_url and db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    
+    app.config['SQLALCHEMY_DATABASE_URI'] = db_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
-    # JWT Configuration - Essential for Role-Based Access Control (RBAC)
-    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'safe-config-ai-secret-key-2026')
+    # Connection pooling for production stability
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        "pool_pre_ping": True,  # Checks if connection is alive before using it
+        "pool_recycle": 300,    # Prevents "stale" connections
+    }
 
-    # 3. Bind extensions to the current app instance
+    # --- 2. Strict Security for JWT ---
+    jwt_key = os.getenv('JWT_SECRET_KEY')
+    if not jwt_key and not app.debug:
+        # Stop the server if secret is missing in production
+        raise ValueError("No JWT_SECRET_KEY set in environment variables!")
+    app.config['JWT_SECRET_KEY'] = jwt_key or 'dev-key-only'
+
+    # --- 3. Better CORS Setup ---
+    # In prod, replace "*" with your actual frontend domain
+    allowed_origins = os.getenv('ALLOWED_ORIGINS', '*') 
+    CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
+
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    
-    # Enable CORS: Critical for your Next.js frontend to talk to this Flask server
-    CORS(app)
 
-    # 4. Blueprint Registration (Deferred Imports)
-    # We import inside the function to prevent circular dependency crashes
-    # This ensures models are loaded before the routes try to use them
     with app.app_context():
         from app.routes.flag_routes import flags_bp
         from app.routes.ai_routes import ai_bp
         from app.routes.auth_routes import auth_bp
         
-        # Registering blueprints with clean URL prefixes
-        app.register_blueprint(flags_bp) # /api/flags
-        app.register_blueprint(ai_bp)    # /api/ai
-        app.register_blueprint(auth_bp)  # /api/auth
+        # Explicit prefixes prevent route collisions
+        app.register_blueprint(flags_bp, url_prefix='/api/flags')
+        app.register_blueprint(ai_bp, url_prefix='/api/ai')
+        app.register_blueprint(auth_bp, url_prefix='/api/auth')
 
-        # Optional: Add a root health check
         @app.route('/')
         def health_check():
-            return {"status": "online", "system": "SafeConfig AI Core"}, 200
+            return {"status": "online", "environment": os.getenv('FLASK_ENV', 'production')}, 200
 
     return app

@@ -7,17 +7,20 @@ from app.schemas import FlagCreateSchema, FlagToggleSchema
 from app.utils.helpers import api_response, format_error
 from pydantic import ValidationError
 
-# Minimalist Backend Cache: Protective shield against Rapid-Fire requests
+# Senior Move: Contextual logging for infrastructure changes
+logger = logging.getLogger(__name__)
+
+# Note: url_prefix is managed in the App Factory (create_app)
+flags_bp = Blueprint("flags", __name__)
+
+# Minimalist Backend Cache: Protective shield against Rapid-Fire requests.
+# NOTE: On Vercel (Serverless), this cache is instance-specific. 
+# Concurrent requests may hit different instances with empty caches.
 _cache = {
     "analytics": {"data": None, "expiry": 0},
     "logs": {"data": None, "expiry": 0}
 }
-CACHE_TTL = 5  # 5 seconds to ignore duplicate spam
-
-# Senior Move: Contextual logging for infrastructure changes
-logger = logging.getLogger(__name__)
-
-flags_bp = Blueprint("flags", __name__, url_prefix="/api/flags")
+CACHE_TTL = 5 
 
 @flags_bp.route("", methods=["GET"])
 @jwt_required()
@@ -36,11 +39,12 @@ def create_flag():
         return api_response(False, "Forbidden", format_error("Managerial privileges required"), 403)
 
     try:
-        data = FlagCreateSchema(**request.get_json())
+        json_data = request.get_json()
+        data = FlagCreateSchema(**json_data)
         new_flag = FlagService.create_new_flag(data)
         return api_response(True, "Feature defined successfully", new_flag.to_dict(), 201)
     except ValidationError as e:
-        return api_response(False, "Schema Violation", format_error("Invalid input", e.errors()), 400)
+        return api_response(False, "Schema Violation", {"errors": e.errors()}, 400)
 
 # --- STAGE 1: AUDIT (DRY-RUN) ---
 
@@ -74,7 +78,8 @@ def toggle_flag(flag_id: int):
         # Inject role into global context for the Service Layer to see
         g.user_role = get_jwt().get("role", "developer")
         
-        data = FlagToggleSchema(**request.get_json())
+        json_data = request.get_json()
+        data = FlagToggleSchema(**json_data)
         result, error_data = FlagService.toggle_status(flag_id, data)
         
         if error_data:
@@ -90,20 +95,16 @@ def toggle_flag(flag_id: int):
 @flags_bp.route("/evaluate/<string:key>", methods=["GET"])
 def track_traffic(key: str):
     """
-    SDK Simulation: Logs a hit and returns state.
-    Now Environment-Aware: Uses ?env= parameter from URL.
+    SDK Simulation: Logs a hit and returns state for specific environment.
     """
     from app.models import FeatureFlag, FlagStatus, Environment
     
-    # 1. Get environment from query params (defaults to Production)
-    # Normalized to Title Case (e.g., 'development' -> 'Development')
     env_name = request.args.get('env', 'Production').capitalize()
     
-    # 2. Capture the 'hit' for AI Blast Radius analytics
-    # Pass env_name to ensure the hit is recorded in the correct environment bucket
+    # 1. Capture the 'hit' for AI Blast Radius analytics
     FlagService.track_evaluation(key, env_name)
     
-    # 3. Resolve Database Objects
+    # 2. Resolve Database Objects
     flag = FeatureFlag.query.filter_by(key=key).first()
     if not flag: 
         return api_response(False, "Flag Not Found", None, 404)
@@ -112,7 +113,7 @@ def track_traffic(key: str):
     if not target_env:
         return api_response(False, f"Environment '{env_name}' Not Found", None, 404)
     
-    # 4. Return the state for the specific Environment
+    # 3. Return the state for the specific Environment
     status = FlagStatus.query.filter_by(flag_id=flag.id, env_id=target_env.id).first()
     
     return api_response(True, f"Traffic captured for {env_name}", {"enabled": status.is_enabled}, 200)

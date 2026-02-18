@@ -1,6 +1,6 @@
 import logging
 from flask import g
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.models import db, FeatureFlag, Environment, FlagStatus, AuditLog, FlagEvaluation
 from app.services.ai_agent import AIAgent
 from sqlalchemy import func
@@ -29,7 +29,7 @@ class FlagService:
                 description=data.description
             )
             db.session.add(new_flag)
-            db.session.flush() # Secure the ID before creating statuses
+            db.session.flush()  # Secure the ID before creating statuses
 
             envs = Environment.query.all()
             for env in envs:
@@ -50,7 +50,9 @@ class FlagService:
     @staticmethod
     def _get_blast_radius(flag_id, env_name="Production"):
         """Internal helper to count hits in the last 24 hours for a specific env."""
-        one_day_ago = datetime.utcnow() - timedelta(hours=24)
+        # Fix: Python 3.12 compatible timezone-aware UTC
+        one_day_ago = datetime.now(timezone.utc) - timedelta(hours=24)
+        
         return db.session.query(func.count(FlagEvaluation.id)).filter(
             FlagEvaluation.flag_id == flag_id,
             FlagEvaluation.environment_name == env_name,
